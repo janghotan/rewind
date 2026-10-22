@@ -31,3 +31,7 @@
 /packaging/*-vendor.tar.xz
 /vendor/
 /.cargo/
+
+# static apt packages
+/packaging/deb-static/
+/apt-debs/

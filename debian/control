@@ -28,6 +28,6 @@ Description: universal undo for destructive shell commands
  .
  Undo is resumable and works across commands: one "rewind undo" reverses
  the most recent destructive operation, and "rewind undo N" reverses the
- last N. A single static binary provides the journal, trash, retention,
+ last N. A single binary provides the journal, trash, retention,
  and configuration commands; bash, zsh, and fish hooks make the wrapping
  invisible.
