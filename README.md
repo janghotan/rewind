@@ -62,10 +62,18 @@ Requires Rust 1.85 or newer.
 sudo dnf copr enable janghotan/rewind
 sudo dnf install rewind
 
-# Debian / Ubuntu (once the PPA is published)
-sudo add-apt-repository ppa:janghotan/rewind
-sudo apt install rewind
+# Debian / Ubuntu (signed APT repository)
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://janghotan.github.io/apt/rewind-archive-keyring.gpg \
+  | sudo tee /etc/apt/keyrings/rewind.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/rewind.gpg] https://janghotan.github.io/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/rewind.list
+sudo apt update && sudo apt install rewind
 ```
+
+The APT repository carries statically linked packages for `amd64` and
+`arm64`, so it works across Debian and Ubuntu releases without runtime
+dependencies. Browse it at <https://janghotan.github.io/apt/>.
 
 Distro packages place the hooks in `/usr/share/rewind/` and shell completions in the standard directories. See [`packaging/`](packaging/) for building `.rpm` and `.deb` files yourself.
 

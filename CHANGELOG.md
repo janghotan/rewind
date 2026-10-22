@@ -52,9 +52,11 @@ First public release.
   commands, shell hooks, git round trips, JSON output, config, expiry, and
   failure paths.
 - **CI**: build, format, clippy, and tests on push and pull request; static
-  musl binaries for Linux x86_64 and aarch64 plus GitHub Releases on tags.
-- **Packaging**: RPM spec for Fedora/COPR and Debian packaging for
-  Debian/Ubuntu, including shell completion and hook installation.
+  musl binaries for Linux x86_64 and aarch64 plus GitHub Releases on tags;
+  automatic publication of signed APT packages after a release.
+- **Packaging**: RPM spec for Fedora/COPR, Debian packaging for
+  Debian/Ubuntu, and a signed APT repository with static `amd64`/`arm64`
+  packages at <https://janghotan.github.io/apt/>.
 
 [Unreleased]: https://github.com/janghotan/rewind/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/janghotan/rewind/releases/tag/v0.1.0
