@@ -45,10 +45,10 @@ One-time setup:
 sudo dnf install copr-cli
 # API token from https://copr.fedorainfracloud.org/api/
 copr-cli create rewind \
-  --chroot fedora-41-x86_64 \
-  --chroot fedora-41-aarch64 \
-  --chroot fedora-42-x86_64 \
-  --chroot fedora-42-aarch64 \
+  --chroot fedora-43-x86_64 \
+  --chroot fedora-43-aarch64 \
+  --chroot fedora-44-x86_64 \
+  --chroot fedora-44-aarch64 \
   --description "Universal undo for destructive shell commands" \
   --instructions "Enable with: sudo dnf copr enable janghotan/rewind"
 ```
@@ -66,7 +66,7 @@ on Fedora (not available on Ubuntu):
 
 ```bash
 sudo dnf install mock
-mock -r fedora-42-x86_64 --rebuild packaging/rpmbuild/SRPMS/rewind-*.src.rpm
+mock -r fedora-44-x86_64 --rebuild packaging/rpmbuild/SRPMS/rewind-*.src.rpm
 ```
 
 ## Debian and Ubuntu
@@ -113,6 +113,6 @@ etc.). Update `debian/changelog` before building for a different series.
 6. Verify installation on a clean container:
 
    ```bash
-   docker run --rm -it fedora:42 sh -c \
+   docker run --rm -it fedora:44 sh -c \
      'dnf -y copr enable janghotan/rewind && dnf -y install rewind && rewind --version'
    ```
