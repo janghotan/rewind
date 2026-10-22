@@ -1,0 +1,53 @@
+#!/usr/bin/make -f
+#
+# rewind is a plain Cargo project. Hooks and shell completions are installed
+# alongside the binary; no system-wide Rust crates are involved, so the
+# debhelper cargo buildsystem (which targets Debian's crate registry) is not
+# used here.
+
+export CARGO_HOME := $(CURDIR)/debian/cargo_home
+export CARGO_TERM_COLOR := never
+
+# When a vendored tree is present (as it is in the source tarball prepared for
+# Launchpad), build without network access. Local builds can use the normal
+# cargo cache.
+ifneq ($(wildcard vendor),)
+export CARGO_NET_OFFLINE := true
+endif
+
+CARGO_FLAGS := --release --locked
+DESTDIR_DIR := debian/rewind
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+
+override_dh_auto_build:
+	cargo build $(CARGO_FLAGS)
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	cargo test $(CARGO_FLAGS)
+endif
+
+override_dh_auto_install:
+	install -Dm755 target/release/rewind $(DESTDIR_DIR)/usr/bin/rewind
+	install -Dm644 shell/bash.sh $(DESTDIR_DIR)/usr/share/rewind/bash.sh
+	install -Dm644 shell/zsh.sh $(DESTDIR_DIR)/usr/share/rewind/zsh.sh
+	install -Dm644 shell/fish.fish $(DESTDIR_DIR)/usr/share/rewind/fish.fish
+	# Completions are generated from the freshly built binary.
+	install -d $(DESTDIR_DIR)/usr/share/bash-completion/completions
+	./target/release/rewind completions bash > $(DESTDIR_DIR)/usr/share/bash-completion/completions/rewind
+	install -d $(DESTDIR_DIR)/usr/share/zsh/vendor-completions
+	./target/release/rewind completions zsh > $(DESTDIR_DIR)/usr/share/zsh/vendor-completions/_rewind
+	install -d $(DESTDIR_DIR)/usr/share/fish/vendor_completions.d
+	./target/release/rewind completions fish > $(DESTDIR_DIR)/usr/share/fish/vendor_completions.d/rewind.fish
+
+override_dh_auto_clean:
+	rm -rf target debian/cargo_home
+	dh_auto_clean
+
+override_dh_strip:
+	# The release profile already strips the binary.
+	:

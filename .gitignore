@@ -25,3 +25,9 @@
 .vscode/
 *.swp
 .DS_Store
+
+# packaging artifacts
+/packaging/deb/
+/packaging/*-vendor.tar.xz
+/vendor/
+/.cargo/
