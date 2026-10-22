@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -94,3 +93,11 @@ jobs:
             dist/*.tar.gz
             dist/SHA256SUMS
           fail_on_unmatched_files: true
+
+  apt:
+    name: publish APT repository
+    needs: [release]
+    uses: ./.github/workflows/apt.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
