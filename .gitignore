@@ -1,0 +1,27 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# packaging build artifacts
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/rewind/
+/debian/*.substvars
+/packaging/rpmbuild/
+/packaging/*.tar.gz
+/packaging/*.src.rpm
+/packaging/*.noarch.rpm
+/packaging/*.x86_64.rpm
+/packaging/*.aarch64.rpm
+*.deb
+*.dsc
+*.changes
+*.buildinfo
+*.rpm
+
+# editors and OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
