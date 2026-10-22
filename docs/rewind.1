@@ -1,0 +1,151 @@
+.TH REWIND 1 "October 2026" "rewind 0.1.0" "User Commands"
+.SH NAME
+rewind \- universal undo for destructive shell commands
+.SH SYNOPSIS
+.B rewind
+.I COMMAND
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B rewind
+intercepts destructive shell commands, stages their pre\-action state, runs
+the real command with unchanged output and exit status, and keeps a local
+journal so the action can be reversed later.
+.PP
+The wrapped commands are
+.BR rm ,
+.BR mv ,
+.BR cp ,
+.BR chmod ,
+.BR chown ,
+and the destructive git operations
+.BR reset ,
+.BR clean ,
+.BR checkout ,
+and
+.BR restore .
+Interception is performed by shell functions installed by
+.BR "rewind init" ;
+the binary itself can also be invoked directly with
+.BR "rewind exec" .
+.PP
+Staged data lives in a per\-user trash directory. Undo is resumable: items
+restored successfully are removed from the journal immediately, so a partial
+failure can be repaired and retried without re\-restoring completed items.
+.SH COMMANDS
+.TP
+.B undo \fR[\fIN\fR] [\fB\-\-dry\-run\fR]
+Reverse the last \fIN\fR journal entries (default 1), newest first. With
+\fB\-\-dry\-run\fR, print what would be restored without changing anything.
+.TP
+.B log \fR[\fB\-n\fR \fILIMIT\fR] [\fB\-\-json\fR]
+Show undo history. The default limit is 30 entries. JSON output includes the
+full command, working directory, status, exit code, item count, and staged
+bytes.
+.TP
+.B status \fR[\fB\-\-json\fR]
+Show data locations, undo stack depth, retention settings, enabled wrappers,
+and whether a shell hook was found.
+.TP
+.B clean \fR[\fB\-\-older\-than\fR \fIDURATION\fR] [\fB\-\-all\fR] [\fB\-\-dry\-run\fR]
+Purge staged files older than the retention period, or enforce the configured
+size cap. Durations accept the suffixes s, m, h, d, and w. History rows are
+kept and marked \fBexpired\fR.
+.TP
+.B init \fR{\fBbash\fR|\fBzsh\fR|\fBfish\fR}
+Print the shell integration script to standard output. Typical installation:
+.PP
+.RS
+.nf
+eval "$(rewind init bash)"            # ~/.bashrc
+eval "$(rewind init zsh)"             # ~/.zshrc
+rewind init fish | source             # ~/.config/fish/config.fish
+.fi
+.RE
+.TP
+.B completions \fR{\fBbash\fR|\fBzsh\fR|\fBfish\fR|\fBelvish\fR|\fBpowershell\fR}
+Print shell completions to standard output.
+.TP
+.B config \fR{\fBpath\fR|\fBshow\fR|\fBget\fR \fIKEY\fR|\fBset\fR \fIKEY\fR \fIVALUE\fR|\fBinit\fR|\fBedit\fR}
+Inspect or change configuration. Boolean values accept
+\fItrue/false\fR, \fIyes/no\fR, \fIon/off\fR, and \fI1/0\fR.
+.TP
+.B exec \fICOMMAND\fR \fB\-\-\fR \fIARGS\fR...
+Execute a wrapped command. This is the entry point used by the shell hooks and
+is hidden from the normal help output.
+.SH CONFIGURATION
+Configuration is optional. Defaults enable every wrapper and keep trash for
+30 days. The file is read from
+.I ~/.config/rewind/config.toml
+(or \fB$XDG_CONFIG_HOME\fR/rewind/config.toml).
+.PP
+Recognized keys:
+.PP
+.RS
+.nf
+wrap.rm, wrap.mv, wrap.cp, wrap.chmod, wrap.chown, wrap.git
+wrap.git_reset, wrap.git_clean, wrap.git_checkout, wrap.git_restore
+trash.retention_days (0 disables automatic expiry)
+trash.max_bytes (0 means unlimited)
+journal.keep_days (0 keeps history forever)
+git.snapshot_untracked, git.keep_refs
+.fi
+.RE
+.SH ENVIRONMENT
+.TP
+.B REWIND_DISABLE
+When set to \fB1\fR, \fBtrue\fR, or \fByes\fR, the shell hook and
+.B rewind exec
+pass commands directly to the real binary.
+.TP
+.B REWIND_DATA_DIR
+Override the data directory (journal and trash).
+.TP
+.B REWIND_JOURNAL
+Override the journal database path.
+.TP
+.B REWIND_CONFIG_PATH
+Override the configuration file path.
+.TP
+.B XDG_DATA_HOME
+Base for the default data directory (\fI~/.local/share/rewind\fR).
+.TP
+.B XDG_CONFIG_HOME
+Base for the default configuration path (\fI~/.config/rewind\fR).
+.SH FILES
+.TP
+.I ~/.local/share/rewind/journal.db
+SQLite journal of wrapped commands and staged items.
+.TP
+.I ~/.local/share/rewind/trash/
+Per\-entry staged data, created with mode 0700.
+.TP
+.I ~/.config/rewind/config.toml
+Optional configuration.
+.SH EXIT STATUS
+.B rewind
+itself exits 0 on success, 1 when an undo is incomplete or a command fails,
+and 2 for command\-line usage errors. Wrapped commands preserve their native
+exit status. \fBrewind undo\fR exits 1 if any entry could not be fully
+restored.
+.SH SAFETY
+rewind refuses to stage or delete its own data directory or any ancestor
+thereof. Undo refuses to overwrite a path that has been recreated since the
+command ran; the conflict is reported and the entry stays in the journal.
+When staging is impossible, the command runs natively and is recorded as
+non\-undoable rather than being blocked.
+.SH LIMITATIONS
+Non\-UTF\-8 arguments, unmodeled flags such as \fBrm \-\-one\-file\-system\fR,
+branch switching, interactive git modes, empty directories removed by
+\fBgit clean\fR, and submodule internals are passed through without undo.
+Deleted files occupy trash until
+.B rewind clean
+runs.
+.SH SEE ALSO
+.BR rm (1),
+.BR mv (1),
+.BR cp (1),
+.BR chmod (1),
+.BR chown (1),
+.BR git (1)
+.PP
+Full documentation: https://github.com/janghotan/rewind

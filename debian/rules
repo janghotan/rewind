@@ -48,6 +48,11 @@ override_dh_auto_clean:
 	rm -rf target debian/cargo_home
 	dh_auto_clean
 
+override_dh_installdocs:
+	dh_installdocs
+	# Debian expects the upstream changelog to be called `changelog`.
+	mv $(DESTDIR_DIR)/usr/share/doc/rewind/CHANGELOG.md $(DESTDIR_DIR)/usr/share/doc/rewind/changelog
+
 override_dh_strip:
 	# The release profile already strips the binary.
 	:

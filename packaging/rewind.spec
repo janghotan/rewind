@@ -49,6 +49,7 @@ cargo test --release --locked
 
 %install
 install -Dm755 target/release/rewind %{buildroot}%{_bindir}/rewind
+install -Dm644 docs/rewind.1 %{buildroot}%{_mandir}/man1/rewind.1
 install -Dm644 shell/bash.sh %{buildroot}%{_datadir}/rewind/bash.sh
 install -Dm644 shell/zsh.sh %{buildroot}%{_datadir}/rewind/zsh.sh
 install -Dm644 shell/fish.fish %{buildroot}%{_datadir}/rewind/fish.fish
@@ -64,6 +65,7 @@ install -d %{buildroot}%{_datadir}/fish/vendor_completions.d
 %license LICENSE
 %doc README.md CONTRIBUTING.md CHANGELOG.md
 %{_bindir}/rewind
+%{_mandir}/man1/rewind.1*
 %dir %{_datadir}/rewind
 %{_datadir}/rewind/bash.sh
 %{_datadir}/rewind/zsh.sh
