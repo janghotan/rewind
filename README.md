@@ -50,7 +50,7 @@ Replace `x86_64` with `aarch64` on ARM64. The release binaries are statically li
 ### Cargo
 
 ```bash
-cargo install --locked rewind
+cargo install --git https://github.com/janghotan/rewind --locked
 ```
 
 Requires Rust 1.85 or newer.
@@ -58,7 +58,7 @@ Requires Rust 1.85 or newer.
 ### Package managers
 
 ```bash
-# Fedora / RHEL (COPR)
+# Fedora / RHEL (COPR, once enabled)
 sudo dnf copr enable janghotan/rewind
 sudo dnf install rewind
 
