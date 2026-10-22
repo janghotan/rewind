@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- APT publishing now refreshes release `SHA256SUMS` so it covers the attached
+  `.deb` files as well as the static binary archives.
+
 ## [0.1.1] - 2026-10-22
 
 Distribution and documentation release. No runtime behavior changes.

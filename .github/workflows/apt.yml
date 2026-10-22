@@ -115,3 +115,16 @@ jobs:
         run: |
           gh release upload "${{ inputs.tag }}" apt-debs/*.deb \
             --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Refresh release checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf checksums
+          mkdir checksums
+          gh release download "${{ inputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" --pattern 'rewind*' --dir checksums
+          (cd checksums && sha256sum rewind* > SHA256SUMS)
+          gh release upload "${{ inputs.tag }}" checksums/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --clobber
