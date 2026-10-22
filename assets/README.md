@@ -1,5 +1,8 @@
 # Assets
 
+`icon.svg` is the mark used in the README header. It matches the teal undo
+arrow on the social card.
+
 `social-preview.png` is the 1280x640 card shown when the repository is shared
 on GitHub, Slack, X, and other sites. Regenerate it with:
 
