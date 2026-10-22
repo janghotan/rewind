@@ -56,7 +56,7 @@ jobs:
           mkdir -p "dist/${name}/shell"
           cp shell/bash.sh shell/zsh.sh shell/fish.fish "dist/${name}/shell/"
           tar -C dist -czf "dist/${archive}" "${name}"
-          sha256sum "dist/${archive}" > "dist/${archive}.sha256"
+          (cd dist && sha256sum "${archive}" > "${archive}.sha256")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
