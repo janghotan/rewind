@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           rewind
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Universal undo for destructive shell commands
 License:        MIT
@@ -75,5 +75,10 @@ install -d %{buildroot}%{_datadir}/fish/vendor_completions.d
 %{_datadir}/fish/vendor_completions.d/rewind.fish
 
 %changelog
+* Thu Oct 22 2026 janghotan <janghotan@users.noreply.github.com> - 0.1.1-1
+- New upstream release.
+- Add static Debian package tooling and signed APT repository automation.
+- Refresh the English and Simplified Chinese documentation.
+
 * Wed Oct 21 2026 janghotan <janghotan@users.noreply.github.com> - 0.1.0-1
 - Initial package.

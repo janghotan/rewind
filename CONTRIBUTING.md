@@ -173,7 +173,7 @@ Releases are driven by tags:
 ```bash
 # 1. Update Cargo.toml version and CHANGELOG.md
 # 2. Commit, then:
-git tag -a v0.1.0 -m "rewind 0.1.0"
+git tag -a v0.1.1 -m "rewind 0.1.1"
 git push origin main --tags
 ```
 

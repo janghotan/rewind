@@ -175,7 +175,7 @@ $ rewind log
 
 ```console
 $ rewind status
-rewind 0.1.0
+rewind 0.1.1
 
   data      /home/you/.local/share/rewind
   config    /home/you/.config/rewind/config.toml

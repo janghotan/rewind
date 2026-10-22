@@ -88,7 +88,7 @@ after publishing a GitHub Release.
 To republish a release manually:
 
 ```bash
-gh workflow run apt.yml -f tag=v0.1.0
+gh workflow run apt.yml -f tag=v0.1.1
 ```
 
 To update the repository from a workstation:

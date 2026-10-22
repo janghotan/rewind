@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-22
+
+Distribution and documentation release. No runtime behavior changes.
+
+### Added
+
+- Signed APT repository at <https://janghotan.github.io/apt/> with
+  statically linked `amd64` and `arm64` packages.
+- `packaging/build-static-deb.sh` for building dependency-free `.deb`
+  packages from the musl release binaries.
+- Simplified Chinese README, a language switcher, and a project icon.
+- The release workflow now builds `.deb` packages, attaches them to the
+  GitHub Release, and publishes them to the APT repository.
+
+### Changed
+
+- Restructured both READMEs around a quick start, coverage table, usage,
+  and development workflow.
+- The Debian package description no longer calls the dynamically linked
+  distro package static.
+
+### Fixed
+
+- Release `SHA256SUMS` entries are now relative to the download directory.
+
 ## [0.1.0] - 2026-10-21
 
 First public release.
@@ -52,11 +77,10 @@ First public release.
   commands, shell hooks, git round trips, JSON output, config, expiry, and
   failure paths.
 - **CI**: build, format, clippy, and tests on push and pull request; static
-  musl binaries for Linux x86_64 and aarch64 plus GitHub Releases on tags;
-  automatic publication of signed APT packages after a release.
-- **Packaging**: RPM spec for Fedora/COPR, Debian packaging for
-  Debian/Ubuntu, and a signed APT repository with static `amd64`/`arm64`
-  packages at <https://janghotan.github.io/apt/>.
+  musl binaries for Linux x86_64 and aarch64 plus GitHub Releases on tags.
+- **Packaging**: RPM spec for Fedora/COPR and Debian packaging for
+  Debian/Ubuntu, including shell completion and hook installation.
 
-[Unreleased]: https://github.com/janghotan/rewind/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/janghotan/rewind/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/janghotan/rewind/releases/tag/v0.1.1
 [0.1.0]: https://github.com/janghotan/rewind/releases/tag/v0.1.0
