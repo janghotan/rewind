@@ -179,8 +179,10 @@ git push origin main --tags
 
 The `release` workflow builds static musl binaries for
 `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, creates a
-GitHub Release, and attaches the archives plus checksums. Packaging files in
-`packaging/` and `debian/` consume the same tag.
+GitHub Release, and publishes signed `.deb` packages through `apt.yml`. The
+release assets include the archives, both `.deb` files, and a `SHA256SUMS`
+covering all of them. Packaging files in `packaging/` and `debian/` consume
+the same tag.
 
 ## Reporting bugs
 
