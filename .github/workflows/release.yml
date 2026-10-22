@@ -49,13 +49,14 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           name="rewind-${version}-${{ matrix.target }}"
+          archive="rewind-${{ matrix.target }}.tar.gz"
           mkdir -p "dist/${name}"
           cp "target/${{ matrix.target }}/release/rewind" "dist/${name}/"
           cp README.md LICENSE CHANGELOG.md "dist/${name}/"
           mkdir -p "dist/${name}/shell"
           cp shell/bash.sh shell/zsh.sh shell/fish.fish "dist/${name}/shell/"
-          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
-          sha256sum "dist/${name}.tar.gz" > "dist/${name}.tar.gz.sha256"
+          tar -C dist -czf "dist/${archive}" "${name}"
+          sha256sum "dist/${archive}" > "dist/${archive}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
