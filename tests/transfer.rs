@@ -57,7 +57,10 @@ fn mv_no_clobber_is_left_alone_and_not_journaled() {
     sandbox.write("a", "a");
     sandbox.write("b", "b");
 
-    sandbox.exec_ok("mv", &["-n", "a", "b"]);
+    // GNU mv versions differ on the exit status of `-n` when it skips a file,
+    // so only the observable no-clobber behavior and the absent journal entry
+    // are asserted here.
+    sandbox.exec("mv", &["-n", "a", "b"]);
     assert_eq!(sandbox.read("a"), "a");
     assert_eq!(sandbox.read("b"), "b");
     assert!(!sandbox.log().contains("mv -n"));
