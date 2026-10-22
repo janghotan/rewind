@@ -2,11 +2,13 @@
 # Build a local RPM (and SRPM) from the current working tree.
 #
 # Usage:
-#   packaging/build-rpm.sh [--with-vendor]
+#   packaging/build-rpm.sh [--with-vendor] [--nocheck]
 #
 # The spec expects a vendor tarball (Source1). With --with-vendor this script
 # generates it from Cargo.lock using `cargo vendor`; otherwise an existing
 # packaging/rewind-<version>-vendor.tar.xz is reused and generated if missing.
+#
+# --nocheck skips %check, which is useful for quick local packaging runs.
 #
 # Requirements: rpm-build, cargo, git.
 set -euo pipefail
@@ -18,9 +20,14 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 with_vendor=0
-if [[ ${1:-} == "--with-vendor" ]]; then
-    with_vendor=1
-fi
+nocheck=0
+for arg in "$@"; do
+    case "$arg" in
+        --with-vendor) with_vendor=1 ;;
+        --nocheck) nocheck=1 ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
 
 vendor_archive="$root/packaging/$name-vendor.tar.xz"
 if [[ $with_vendor -eq 1 || ! -f $vendor_archive ]]; then
@@ -36,7 +43,7 @@ git -C "$root" archive --format=tar.gz --prefix="$name/" \
 
 echo "==> running rpmbuild"
 mkdir -p "$root/packaging/rpmbuild"/{SRPMS,RPMS}
-rpmbuild -ba "$root/packaging/rewind.spec" \
+rpmbuild -ba ${nocheck:+--nocheck} "$root/packaging/rewind.spec" \
     --define "_sourcedir $work" \
     --define "_srcrpmdir $root/packaging/rpmbuild/SRPMS" \
     --define "_rpmdir $root/packaging/rpmbuild/RPMS" \
