@@ -58,7 +58,7 @@ Requires Rust 1.85 or newer.
 ### Package managers
 
 ```bash
-# Fedora / RHEL (COPR, once enabled)
+# Fedora / RHEL (COPR)
 sudo dnf copr enable janghotan/rewind
 sudo dnf install rewind
 

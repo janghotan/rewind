@@ -45,10 +45,10 @@ One-time setup:
 sudo dnf install copr-cli
 # API token from https://copr.fedorainfracloud.org/api/
 copr-cli create rewind \
-  --chroot fedora-43-x86_64 \
-  --chroot fedora-43-aarch64 \
   --chroot fedora-44-x86_64 \
   --chroot fedora-44-aarch64 \
+  --chroot fedora-45-x86_64 \
+  --chroot fedora-45-aarch64 \
   --description "Universal undo for destructive shell commands" \
   --instructions "Enable with: sudo dnf copr enable janghotan/rewind"
 ```
