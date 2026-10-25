@@ -59,6 +59,14 @@ curl -fsSL https://github.com/janghotan/rewind/releases/latest/download/rewind-x
 <details>
 <summary><strong>包管理器与源码构建</strong></summary>
 
+**macOS / Homebrew**
+
+```bash
+brew install janghotan/tap/rewind
+```
+
+Homebrew 会自动安装 Bash、Zsh 和 Fish 的命令补全。Shell 集成（命令拦截）不会自动启用，需要通过 `rewind init` 添加到 shell 配置文件中（详见下方的[启用 shell hook](#启用-shell-hook)）。
+
 **Fedora / RHEL**
 
 ```bash
