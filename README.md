@@ -59,6 +59,14 @@ Replace `x86_64` with `aarch64` on ARM64. Release binaries are statically linked
 <details>
 <summary><strong>Package managers and source builds</strong></summary>
 
+**macOS / Homebrew**
+
+```bash
+brew install janghotan/tap/rewind
+```
+
+Homebrew installs completions for Bash, Zsh, and Fish automatically. Shell integration (command interception) is not enabled automatically and must be added to your shell startup file using `rewind init` (see [Enable the shell hook](#enable-the-shell-hook) below).
+
 **Fedora / RHEL**
 
 ```bash
