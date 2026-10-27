@@ -186,11 +186,40 @@ fn hooks_leave_non_destructive_git_alone() {
         r#"
         eval "$(rewind init bash)"
         git status --short
+        git branch
         rewind log
         "#,
     );
     assert!(output.status.success());
     assert!(stdout_of(&output).contains("no history"));
+}
+
+#[test]
+fn bash_hook_wraps_git_branch_delete_and_undo_restores() {
+    if !shell_available("bash") || !have_command("git") {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    let output = sandbox.run_shell(
+        "bash",
+        r#"
+        eval "$(rewind init bash)"
+        git branch feature/shell-test
+        git branch -D feature/shell-test
+        git rev-parse --verify --quiet refs/heads/feature/shell-test && exit 1
+        rewind undo
+        git rev-parse --verify --quiet refs/heads/feature/shell-test || exit 2
+        echo OK
+        "#,
+    );
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout_of(&output).contains("OK"));
 }
 
 /// Compare real `rm` with `rewind exec rm` for a case where both run in

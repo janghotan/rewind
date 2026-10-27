@@ -1,3 +1,12 @@
+rewind (0.2.0-1) resolute; urgency=medium
+
+  * Add `rewind inspect <ID>` command with terminal and JSON output.
+  * Correctly restore deleted empty directories on `git clean` undo.
+  * Add undo support for local Git branch deletion (`git branch -d` / `-D`).
+  * Update shell hooks for bash, zsh, and fish to support branch deletion.
+
+ -- janghotan <janghotan@users.noreply.github.com>  Tue, 27 Oct 2026 14:00:00 +0000
+
 rewind (0.1.1-1) resolute; urgency=medium
 
   * New upstream release.

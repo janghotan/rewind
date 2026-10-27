@@ -40,6 +40,7 @@ rewind keeps one undo stack across all of them.
 | Undo permission / owner changes | No | No | Yes |
 | Undo `git reset --hard` | No | Partial | Yes |
 | Undo `git clean` | No | No | Yes |
+| Undo `git branch -D` | No | Partial | Yes |
 | Mixed-command undo stack | No | No | Yes |
 | Works outside a repository | Yes | No | Yes |
 
@@ -130,7 +131,7 @@ $ echo $?
 1
 ```
 
-Only the destructive `git` subcommands — `reset`, `clean`, `checkout`, and `restore` — are routed through rewind. Everything else, including `git status`, `git log`, and `git commit`, has zero overhead.
+Only the destructive `git` subcommands — `reset`, `clean`, `checkout`, `restore`, and `branch` (`-d`/`-D`) — are routed through rewind. Everything else, including `git status`, `git log`, and `git commit`, has zero overhead.
 
 To uninstall, remove the line from your startup file and delete `~/.local/share/rewind/`.
 
@@ -140,6 +141,7 @@ To uninstall, remove the line from your startup file and delete `~/.local/share/
 |---|---|
 | `rewind undo [N]` | Reverse the last `N` destructive commands, newest first |
 | `rewind log` | Show the undo history; add `--json` for machines |
+| `rewind inspect <ID>` | Inspect one journal entry and preview recovery status; add `--json` for machines |
 | `rewind status` | Show data locations, stack size, retention, and active wrappers; `--json` for machines |
 | `rewind clean` | Purge staged data by age or by the configured size cap |
 
@@ -179,11 +181,38 @@ $ rewind log
 | `failed` | The wrapped command failed; leftovers may still be staged |
 | `expired` | Staged data was purged by `rewind clean` |
 
+### `rewind inspect <ID>`
+
+Inspect one journal entry, its staged files, and its recovery readiness without restoring anything or modifying the journal.
+
+```console
+$ rewind inspect 12
+Entry #12
+  Status:       undoable
+  Command:      rm -rf src/
+  Directory:    /home/user/project
+  Created:      2026-10-27 10:30:00
+  Items:        1
+  Staged size:  24 MiB
+
+Staged items:
+  src/
+    Type:      directory
+    Contents:  38 files, 6 directories
+
+Recovery:
+  State:        ready
+  Details:      ready to undo
+  Note:         inspection is read-only and cannot guarantee recovery; undo re-checks every destination
+```
+
+`--json` emits machine-readable metadata, recovery blockers, conflicts, and staged item details.
+
 ### `rewind status`
 
 ```console
 $ rewind status
-rewind 0.1.1
+rewind 0.2.0
 
   data      /home/you/.local/share/rewind
   config    /home/you/.config/rewind/config.toml
@@ -197,7 +226,7 @@ rewind 0.1.1
 
   retention 30 days
   wrappers  rm mv cp chmod chown git
-  git ops   reset clean checkout restore
+  git ops   reset clean checkout restore branch
   shell     bash hook found
 ```
 
@@ -234,9 +263,10 @@ command rm -rf build/            # bypass the shell function
 | `chmod` | Mode, and where relevant timestamps, of every target | Previous mode |
 | `chown` | Owner and group of every target | Previous owner and group |
 | `git reset --hard` | `HEAD`, the index tree, and all uncommitted changes, pinned under `refs/rewind/*` | The exact pre-reset worktree and index |
-| `git clean -f…` | Hard-link snapshots of every candidate path | Deleted untracked/ignored files and directories |
+| `git clean -f…` | Hard-link snapshots of candidates and recorded empty directories | Deleted untracked/ignored files and empty directories |
 | `git checkout -- <paths>` | Affected worktree files and the index tree | Previous worktree contents; index restored |
 | `git restore` | Same as `checkout`, honoring `--staged` and `--source` | Previous worktree and/or index state |
+| `git branch -d / -D` | Pinned commit references under `refs/rewind/*` | Restores the deleted branch; safely protects recreated branches |
 
 `rm` implements GNU-compatible behavior for the common surface, including `-r/-R`, `-f`, `-i`, `-I`, `-d`, `-v`, `--`, `--preserve-root`, and `--no-preserve-root`. Flags rewind does not model (`--one-file-system`, `--help`, `--version`, unknown flags) are passed directly to the real `rm`, preserving native behavior at the cost of undo for that one call.
 
@@ -264,7 +294,7 @@ Staging an `rm` is a rename within the same filesystem: effectively free and ind
 
 ### Git snapshots
 
-`git reset --hard` is the hardest case because it can destroy `HEAD`, the index, and uncommitted work at once. rewind creates a dangling commit with `git stash create`, pins `HEAD`, the index, and that stash under `refs/rewind/<id>-*` so `git gc` cannot collect them, then runs the real reset. `git clean` snapshots the candidate set and honors filters such as `-e`, `-X`, `-x`, `-d`, and pathspecs without reimplementing them. `checkout` and `restore` snapshot the affected worktree files and the index; branch switching, `--patch`, `--merge`, and interactive modes pass straight through.
+`git reset --hard` is the hardest case because it can destroy `HEAD`, the index, and uncommitted work at once. rewind creates a dangling commit with `git stash create`, pins `HEAD`, the index, and that stash under `refs/rewind/<id>-*` so `git gc` cannot collect them, then runs the real reset. `git clean` snapshots the candidate set (including empty directory hierarchies) and honors filters such as `-e`, `-X`, `-x`, `-d`, and pathspecs without reimplementing them. `git branch -d / -D` captures and pins the commit hash before deletion so `git gc` cannot collect unreferenced commits. `checkout` and `restore` snapshot the affected worktree files and the index; branch switching, `--patch`, `--merge`, and interactive modes pass straight through.
 
 ## Configuration
 
@@ -290,6 +320,7 @@ git_reset = true
 git_clean = true
 git_checkout = true
 git_restore = true
+git_branch_delete = true
 
 [trash]
 retention_days = 30 # 0 disables automatic expiry
@@ -323,7 +354,6 @@ These are deliberate: rewind prefers correct native behavior over a broken appro
 - **Non-UTF-8 arguments** are passed to the native command without undo for that invocation.
 - **`rm` flags not modeled** (`--one-file-system`, unknown flags) pass through without undo.
 - **`rm -r symlink/`** — a trailing slash on a symlink follows the link; rewind delegates rather than guessing.
-- **Empty directories** deleted by `git clean` are not restored.
 - **Submodule state** and `.git` internals beyond `HEAD`/index/worktree are not snapshotted.
 - **Interrupted commands** (SIGKILL) may leave a `running` entry; after 24 hours it is marked `interrupted`, and whatever was staged can still be restored or cleaned.
 - **No cross-user recovery.** The journal belongs to the user who ran the command.

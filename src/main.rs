@@ -64,6 +64,15 @@ enum Commands {
         json: bool,
     },
 
+    /// Inspect one journal entry without changing anything
+    Inspect {
+        /// Journal entry ID (see `rewind log`)
+        id: i64,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Purge staged files older than the retention period
     Clean {
         /// Override the configured retention, e.g. 7d, 12h, 30m
@@ -152,6 +161,11 @@ fn run() -> Result<i32> {
         Commands::Log { limit, json } => {
             let journal = open_readonly(&paths)?;
             commands::log(&journal, limit, json)?;
+            Ok(0)
+        }
+        Commands::Inspect { id, json } => {
+            let journal = Journal::open_query_only(&paths.journal_path)?;
+            commands::inspect(&journal, &paths, id, json)?;
             Ok(0)
         }
         Commands::Clean {

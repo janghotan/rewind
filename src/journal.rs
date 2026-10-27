@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 use serde_json::Value;
 
 use crate::error::{Error, Result};
@@ -105,6 +105,8 @@ pub enum StagedKind {
     Metadata,
     /// Path did not exist before the command; undo should remove it.
     Created,
+    /// An empty directory removed by `git clean`; undo recreates it.
+    Directory,
 }
 
 impl StagedKind {
@@ -114,6 +116,7 @@ impl StagedKind {
             Self::Copy => "copy",
             Self::Metadata => "metadata",
             Self::Created => "created",
+            Self::Directory => "directory",
         }
     }
 
@@ -122,6 +125,7 @@ impl StagedKind {
             "move" => Self::Move,
             "copy" => Self::Copy,
             "metadata" => Self::Metadata,
+            "directory" => Self::Directory,
             _ => Self::Created,
         }
     }
@@ -246,6 +250,27 @@ impl Journal {
             .map_err(|err| Error::Journal(format!("open memory: {err}")))?;
         conn.execute_batch(SCHEMA)
             .map_err(|err| Error::Journal(format!("initializing schema: {err}")))?;
+        Ok(Self { conn })
+    }
+
+    /// Open an existing journal without the ability to change entries.
+    ///
+    /// Unlike [`Journal::open`], this never creates the database or its
+    /// schema. `PRAGMA query_only` makes SQLite reject accidental writes, so
+    /// read-only commands such as `rewind inspect` cannot mutate the journal.
+    pub fn open_query_only(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Err(Error::Journal(format!(
+                "no journal yet at {}",
+                path.display()
+            )));
+        }
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|err| Error::Journal(format!("opening {}: {err}", path.display())))?;
+        conn.execute_batch("PRAGMA query_only = ON; PRAGMA busy_timeout = 5000;")
+            .map_err(|err| {
+                Error::Journal(format!("opening {} read-only: {err}", path.display()))
+            })?;
         Ok(Self { conn })
     }
 
@@ -376,6 +401,19 @@ impl Journal {
         self.conn
             .execute("DELETE FROM staged WHERE id = ?1", params![staged_id])
             .map_err(|err| Error::Journal(format!("deleting staged item: {err}")))?;
+        Ok(())
+    }
+
+    /// Update the JSON metadata associated with one staged item.
+    pub fn set_staged_meta(&mut self, staged_id: i64, meta: &Value) -> Result<()> {
+        let text = serde_json::to_string(meta)
+            .map_err(|err| Error::Journal(format!("serializing staged meta: {err}")))?;
+        self.conn
+            .execute(
+                "UPDATE staged SET meta = ?1 WHERE id = ?2",
+                params![text, staged_id],
+            )
+            .map_err(|err| Error::Journal(format!("updating staged meta: {err}")))?;
         Ok(())
     }
 
@@ -797,5 +835,27 @@ mod tests {
             j.entry(id).unwrap().unwrap().status,
             EntryStatus::Interrupted
         );
+    }
+
+    #[test]
+    fn open_query_only_enforces_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("journal.db");
+        assert!(Journal::open_query_only(&db_path).is_err());
+        assert!(!db_path.exists());
+
+        {
+            let mut j = Journal::open(&db_path).unwrap();
+            j.begin_entry("rm", &args(&["test"]), Path::new("/"))
+                .unwrap();
+        }
+
+        let qj = Journal::open_query_only(&db_path).unwrap();
+        let entries = qj.list(10, false).unwrap();
+        assert_eq!(entries.len(), 1);
+
+        // Attempting an insert or write must fail under SQLITE_OPEN_READ_ONLY / PRAGMA query_only
+        let write_res = qj.conn.execute("DELETE FROM entries", []);
+        assert!(write_res.is_err());
     }
 }

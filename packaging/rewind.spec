@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           rewind
-Version:        0.1.1
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Universal undo for destructive shell commands
 License:        MIT
@@ -17,7 +17,7 @@ BuildRequires:  rust
 %description
 rewind sits between your shell and commands that destroy state. It stages the
 pre-action state of rm, mv, cp, chmod, chown, git reset --hard, git clean,
-git checkout, and git restore, runs the real command with unchanged output and
+git checkout, git restore, and git branch -D, runs the real command with unchanged output and
 exit code, and keeps a local journal so the action can be reversed later.
 
 Undo is resumable and works across commands: one "rewind undo" reverses the
@@ -75,6 +75,12 @@ install -d %{buildroot}%{_datadir}/fish/vendor_completions.d
 %{_datadir}/fish/vendor_completions.d/rewind.fish
 
 %changelog
+* Tue Oct 27 2026 janghotan <janghotan@users.noreply.github.com> - 0.2.0-1
+- New upstream release.
+- Add `rewind inspect` command.
+- Restore empty directories on `git clean` undo.
+- Add undo support for `git branch -D`.
+
 * Thu Oct 22 2026 janghotan <janghotan@users.noreply.github.com> - 0.1.1-1
 - New upstream release.
 - Add static Debian package tooling and signed APT repository automation.
