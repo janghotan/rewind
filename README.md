@@ -51,11 +51,14 @@ rewind keeps one undo stack across all of them.
 The fastest install is the static Linux binary:
 
 ```bash
-curl -fsSL https://github.com/janghotan/rewind/releases/latest/download/rewind-x86_64-unknown-linux-musl.tar.gz \
-  | tar -xz -C ~/.local/bin
+set -o pipefail
+install -d -m 0755 "$HOME/.local/bin" &&
+curl -fsSL https://github.com/janghotan/rewind/releases/latest/download/rewind-x86_64-unknown-linux-musl.tar.gz |
+  tar -xz --strip-components=1 --wildcards -C "$HOME/.local/bin" 'rewind-*/rewind' &&
+"$HOME/.local/bin/rewind" --version
 ```
 
-Replace `x86_64` with `aarch64` on ARM64. Release binaries are statically linked against musl and have no runtime dependencies.
+Replace `x86_64` with `aarch64` in the URL on ARM64. Release binaries are statically linked against musl and have no runtime dependencies. Ensure `~/.local/bin` is in your `PATH` (e.g. `export PATH="$HOME/.local/bin:$PATH"`).
 
 <details>
 <summary><strong>Package managers and source builds</strong></summary>
