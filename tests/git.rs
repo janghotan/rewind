@@ -828,3 +828,32 @@ fn git_clean_undo_handles_permission_restoration_failure_and_remains_resumable()
         assert_eq!(sandbox.mode("parent/untracked_leaf"), 0o700);
     }
 }
+
+#[test]
+fn git_clean_undo_preserves_recreated_directory_contents_and_permissions() {
+    if !git_available() {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.mkdir("custom_dir");
+    #[cfg(unix)]
+    sandbox.set_mode("custom_dir", 0o700);
+
+    sandbox.exec_ok("git", &["clean", "-fd"]);
+    assert!(!sandbox.path("custom_dir").exists());
+
+    // User recreates the directory with different permissions and adds new files
+    sandbox.mkdir("custom_dir");
+    sandbox.write("custom_dir/work.txt", "my new work\n");
+    #[cfg(unix)]
+    sandbox.set_mode("custom_dir", 0o750);
+
+    // Undo must succeed without altering the user's directory permissions or contents
+    sandbox.run_ok(&["undo"]);
+
+    assert!(sandbox.path("custom_dir").is_dir());
+    assert_eq!(sandbox.read("custom_dir/work.txt"), "my new work\n");
+    #[cfg(unix)]
+    assert_eq!(sandbox.mode("custom_dir"), 0o750);
+}

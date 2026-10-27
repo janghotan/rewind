@@ -404,6 +404,19 @@ impl Journal {
         Ok(())
     }
 
+    /// Update the JSON metadata associated with one staged item.
+    pub fn set_staged_meta(&mut self, staged_id: i64, meta: &Value) -> Result<()> {
+        let text = serde_json::to_string(meta)
+            .map_err(|err| Error::Journal(format!("serializing staged meta: {err}")))?;
+        self.conn
+            .execute(
+                "UPDATE staged SET meta = ?1 WHERE id = ?2",
+                params![text, staged_id],
+            )
+            .map_err(|err| Error::Journal(format!("updating staged meta: {err}")))?;
+        Ok(())
+    }
+
     /// Number of staged rows still attached to an entry.
     pub fn staged_count(&self, entry_id: i64) -> Result<u64> {
         let count: i64 = self

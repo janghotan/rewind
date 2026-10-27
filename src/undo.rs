@@ -261,8 +261,23 @@ fn restore_clean_directories(
             }
         }
 
+        let created_by_rewind = item
+            .meta
+            .get("created_by_rewind")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
         match origin.symlink_metadata() {
             Ok(meta) if meta.file_type().is_dir() => {
+                // If the directory was recreated by the user (or survived the original
+                // clean), do NOT change its permissions or touch its contents.
+                if !created_by_rewind {
+                    journal.remove_staged(item.id)?;
+                    continue;
+                }
+
+                // If rewind created this directory during a previous attempt, apply
+                // the original recorded permissions now.
                 let mut mode_ok = true;
                 if let Some(mode) = item
                     .meta
@@ -309,6 +324,18 @@ fn restore_clean_directories(
                             .get("mode")
                             .and_then(Value::as_u64)
                             .map(|mode| mode as u32);
+
+                        // Persist that rewind created this directory so that a retry
+                        // can distinguish it from a user-recreated directory.
+                        let mut updated_meta = item.meta.clone();
+                        if let Some(obj) = updated_meta.as_object_mut() {
+                            obj.insert("created_by_rewind".to_string(), json!(true));
+                        }
+                        if let Err(err) = journal.set_staged_meta(item.id, &updated_meta) {
+                            eprintln!("rewind: recording directory state: {err}");
+                            *success = false;
+                        }
+
                         created.push((item.id, origin, mode));
                     }
                     Err(err) => {
@@ -503,4 +530,116 @@ fn persist_meta(
 ) -> crate::error::Result<()> {
     meta["pairs"] = Value::Array(pairs.to_vec());
     journal.set_entry_meta(entry_id, meta)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::journal::{NewStaged, StagedKind};
+
+    #[test]
+    fn clean_directories_preserves_user_recreated_directory_permissions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let user_dir = tmp.path().join("user_dir");
+        std::fs::create_dir(&user_dir).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&user_dir, std::fs::Permissions::from_mode(0o750)).unwrap();
+        }
+
+        let mut j = Journal::open_memory().unwrap();
+        let entry_id = j
+            .begin_entry("git_clean", &["clean".into(), "-fd".into()], tmp.path())
+            .unwrap();
+
+        // Staged item records 0o700 from before deletion, but created_by_rewind is false
+        let item = NewStaged::new(user_dir.display().to_string(), "", StagedKind::Directory)
+            .with_meta(json!({"role": "git_clean", "mode": 0o700}));
+        j.add_staged(entry_id, &item).unwrap();
+
+        let staged = j.staged_for(entry_id).unwrap();
+        let entry = j.entry(entry_id).unwrap().unwrap();
+        let mut success = true;
+
+        restore_clean_directories(&mut j, &entry, &staged, &mut success).unwrap();
+
+        assert!(success);
+        // The user's permissions must remain 0o750, not changed to 0o700!
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let current = std::fs::symlink_metadata(&user_dir)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o7777;
+            assert_eq!(current, 0o750);
+        }
+        // Staged item is consumed
+        assert_eq!(j.staged_count(entry_id).unwrap(), 0);
+    }
+
+    #[test]
+    fn clean_directories_resumes_when_created_by_rewind_and_permission_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut j = Journal::open_memory().unwrap();
+        let entry_id = j
+            .begin_entry("git_clean", &["clean".into(), "-fd".into()], tmp.path())
+            .unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let read_only_dir = ["/etc", "/usr", "/bin"].iter().map(Path::new).find(|p| {
+                p.is_dir()
+                    && std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).is_err()
+            });
+
+            if let Some(target) = read_only_dir {
+                // Staged item with created_by_rewind: true
+                let item = NewStaged::new(target.display().to_string(), "", StagedKind::Directory)
+                    .with_meta(
+                        json!({"role": "git_clean", "mode": 0o700, "created_by_rewind": true}),
+                    );
+                let item_id = j.add_staged(entry_id, &item).unwrap();
+
+                let staged = j.staged_for(entry_id).unwrap();
+                let entry = j.entry(entry_id).unwrap().unwrap();
+                let mut success = true;
+
+                restore_clean_directories(&mut j, &entry, &staged, &mut success).unwrap();
+
+                // Because set_permissions failed on read-only system path:
+                assert!(!success);
+                // Staged item MUST NOT be consumed!
+                assert_eq!(j.staged_count(entry_id).unwrap(), 1);
+
+                // Now simulate retrying after permissions can be applied
+                let writable_dir = tmp.path().join("now_writable");
+                std::fs::create_dir(&writable_dir).unwrap();
+                j.remove_staged(item_id).unwrap();
+                let writable_item = NewStaged::new(
+                    writable_dir.display().to_string(),
+                    "",
+                    StagedKind::Directory,
+                )
+                .with_meta(json!({"role": "git_clean", "mode": 0o700, "created_by_rewind": true}));
+                j.add_staged(entry_id, &writable_item).unwrap();
+
+                let staged = j.staged_for(entry_id).unwrap();
+                let mut success = true;
+                restore_clean_directories(&mut j, &entry, &staged, &mut success).unwrap();
+
+                assert!(success);
+                let current = std::fs::symlink_metadata(&writable_dir)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o7777;
+                assert_eq!(current, 0o700);
+                assert_eq!(j.staged_count(entry_id).unwrap(), 0);
+            }
+        }
+    }
 }
