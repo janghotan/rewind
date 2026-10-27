@@ -6,8 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`rewind inspect <ID>` command**: preview journal entry metadata, staged item paths, types, modes, timestamps, directory summaries, and recovery status before attempting an undo. Supports machine-readable `--json` output with conflict and missing data diagnostics.
+- **`git branch -d` and `git branch -D` undo**: reversible branch deletion. Captures the branch head and pins it under `refs/rewind/<id>-*` to prevent Git garbage collection even when no other ref points to the commit. Restoring safely refuses to overwrite branches recreated at a different commit.
+- **Shell hook branch interception**: bash, zsh, and fish hooks route branch deletion commands through rewind while keeping branch listing and non-destructive Git operations on the fast path.
+- **`wrap.git_branch_delete` configuration toggle**: enables or disables branch deletion interception independently (defaults to `true`).
+
 ### Fixed
 
+- **`git clean` empty directory restoration**: empty directories deleted by `git clean -fd` (including nested empty directory trees, ignored directories, and empty directories within untracked file hierarchies) are now accurately recorded and restored in parent-first order with original permissions preserved.
 - APT publishing now refreshes release `SHA256SUMS` so it covers the attached
   `.deb` files as well as the static binary archives.
 

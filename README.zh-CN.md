@@ -40,6 +40,7 @@ src/
 | 撤销权限 / 所有者变更 | 否 | 否 | 是 |
 | 撤销 `git reset --hard` | 否 | 部分 | 是 |
 | 撤销 `git clean` | 否 | 否 | 是 |
+| 撤销 `git branch -D` | 否 | 部分 | 是 |
 | 混合命令的撤销栈 | 否 | 否 | 是 |
 | 在 Git 仓库外可用 | 是 | 否 | 是 |
 
@@ -130,7 +131,7 @@ $ echo $?
 1
 ```
 
-只有 `reset`、`clean`、`checkout` 和 `restore` 这四个破坏性 `git` 子命令会经过 rewind。其他命令，包括 `git status`、`git log` 和 `git commit`，没有任何额外开销。
+只有 `reset`、`clean`、`checkout`、`restore` 和 `branch`（`-d`/`-D`）破坏性 `git` 子命令会经过 rewind。其他命令，包括 `git status`、`git log` 和 `git commit`，没有任何额外开销。
 
 卸载时删除启动文件中的那一行，并删除 `~/.local/share/rewind/`。
 
@@ -140,6 +141,7 @@ $ echo $?
 |---|---|
 | `rewind undo [N]` | 按从新到旧的顺序撤销最近 `N` 条破坏性命令 |
 | `rewind log` | 显示撤销历史；加 `--json` 输出机器可读格式 |
+| `rewind inspect <ID>` | 检查单条日志记录并预览恢复状态；加 `--json` 输出机器可读格式 |
 | `rewind status` | 显示数据位置、撤销栈大小、保留策略和已启用的包装器；`--json` 输出机器可读格式 |
 | `rewind clean` | 按时间或配置的容量上限清理暂存数据 |
 
@@ -179,11 +181,38 @@ $ rewind log
 | `failed` | 被包装的命令失败；暂存数据可能仍然保留 |
 | `expired` | 暂存数据已被 `rewind clean` 清理 |
 
+### `rewind inspect <ID>`
+
+检查单条日志记录、暂存文件和恢复就绪状态，不还原任何文件，也不修改日志。
+
+```console
+$ rewind inspect 12
+Entry #12
+  Status:       undoable
+  Command:      rm -rf src/
+  Directory:    /home/user/project
+  Created:      2026-10-27 10:30:00
+  Items:        1
+  Staged size:  24 MiB
+
+Staged items:
+  src/
+    Type:      directory
+    Contents:  38 files, 6 directories
+
+Recovery:
+  State:        ready
+  Details:      ready to undo
+  Note:         inspection is read-only and cannot guarantee recovery; undo re-checks every destination
+```
+
+`--json` 输出机器可读的元数据、恢复阻塞因素、冲突及暂存条目详情。
+
 ### `rewind status`
 
 ```console
 $ rewind status
-rewind 0.1.1
+rewind 0.2.0
 
   data      /home/you/.local/share/rewind
   config    /home/you/.config/rewind/config.toml
@@ -197,7 +226,7 @@ rewind 0.1.1
 
   retention 30 days
   wrappers  rm mv cp chmod chown git
-  git ops   reset clean checkout restore
+  git ops   reset clean checkout restore branch
   shell     bash hook found
 ```
 
@@ -234,9 +263,10 @@ command rm -rf build/            # 绕过 shell 函数
 | `chmod` | 每个目标的权限模式，以及相关时间戳 | 之前的模式 |
 | `chown` | 每个目标的所有者和所属组 | 之前的所有者和所属组 |
 | `git reset --hard` | `HEAD`、索引树和所有未提交更改，固定在 `refs/rewind/*` 下 | 重置前精确的工作区和索引 |
-| `git clean -f…` | 每个候选路径的硬链接快照 | 被删除的未跟踪/被忽略文件和目录 |
+| `git clean -f…` | 每个候选路径的硬链接快照及空目录记录 | 被删除的未跟踪/被忽略文件和空目录 |
 | `git checkout -- <paths>` | 受影响的工作区文件和索引树 | 之前的工作区内容；索引被恢复 |
 | `git restore` | 与 `checkout` 相同，遵循 `--staged` 和 `--source` | 此前的工作区和/或索引状态 |
+| `git branch -d / -D` | 固定在 `refs/rewind/*` 下的分支提交引用 | 恢复被删除的分支；安全阻止覆盖已重新创建的分支 |
 
 `rm` 为常用功能实现了与 GNU 兼容的行为，包括 `-r/-R`、`-f`、`-i`、`-I`、`-d`、`-v`、`--`、`--preserve-root` 和 `--no-preserve-root`。rewind 未建模的选项（`--one-file-system`、`--help`、`--version`、未知选项）会直接传给真正的 `rm`，保留原生行为，代价是这一次调用无法撤销。
 
@@ -264,7 +294,7 @@ command rm -rf build/            # 绕过 shell 函数
 
 ### Git 快照
 
-`git reset --hard` 是最难处理的情况，因为它可能同时破坏 `HEAD`、索引和未提交的工作。rewind 会用 `git stash create` 创建一个悬空提交，把 `HEAD`、索引和该 stash 固定在 `refs/rewind/<id>-*` 下，防止 `git gc` 回收，然后运行真正的 reset。`git clean` 会对候选集合做快照，并遵循 `-e`、`-X`、`-x`、`-d` 和 pathspec 等过滤条件，无需重新实现它们。`checkout` 和 `restore` 会快照受影响的工作区文件和索引；切换分支、`--patch`、`--merge` 以及交互模式会直接透传。
+`git reset --hard` 是最难处理的情况，因为它可能同时破坏 `HEAD`、索引和未提交的工作。rewind 会用 `git stash create` 创建一个悬空提交，把 `HEAD`、索引和该 stash 固定在 `refs/rewind/<id>-*` 下，防止 `git gc` 回收，然后运行真正的 reset。`git clean` 会对候选集合（包含嵌套空目录层级）做快照，并遵循 `-e`、`-X`、`-x`、`-d` 和 pathspec 等过滤条件，无需重新实现它们。`git branch -d / -D` 会在删除前捕获并固定提交哈希，防止未引用的提交被 `git gc` 回收。`checkout` 和 `restore` 会快照受影响的工作区文件和索引；切换分支、`--patch`、`--merge` 以及交互模式会直接透传。
 
 ## 配置
 
@@ -290,6 +320,7 @@ git_reset = true
 git_clean = true
 git_checkout = true
 git_restore = true
+git_branch_delete = true
 
 [trash]
 retention_days = 30 # 设为 0 可禁用自动过期
@@ -323,7 +354,6 @@ keep_refs = false          # 条目清理后仍保留 refs/rewind/*
 - **非 UTF-8 参数**会直接传给原生命令，该次调用无法撤销。
 - **未建模的 `rm` 选项**（`--one-file-system`、未知选项）会直接透传，无法撤销。
 - **`rm -r symlink/`**（符号链接末尾带斜杠）会跟随链接；rewind 选择委托给原生工具，而不是猜测。
-- **`git clean` 删除的空目录**不会被恢复。
 - **子模块状态**以及 `HEAD`/索引/工作区之外的 `.git` 内部状态不会被快照。
 - **被中断的命令**（SIGKILL）可能留下 `running` 条目；24 小时后它会被标记为 `interrupted`，已暂存的内容仍然可以恢复或清理。
 - **不支持跨用户恢复。** 日志属于执行命令的用户。

@@ -1,4 +1,4 @@
-.TH REWIND 1 "October 2026" "rewind 0.1.1" "User Commands"
+.TH REWIND 1 "October 2026" "rewind 0.2.0" "User Commands"
 .SH NAME
 rewind \- universal undo for destructive shell commands
 .SH SYNOPSIS
@@ -21,8 +21,9 @@ and the destructive git operations
 .BR reset ,
 .BR clean ,
 .BR checkout ,
+.BR restore ,
 and
-.BR restore .
+.BR branch \fR(\fB\-d\fR/\fB\-D\fR).
 Interception is performed by shell functions installed by
 .BR "rewind init" ;
 the binary itself can also be invoked directly with
@@ -41,6 +42,10 @@ Reverse the last \fIN\fR journal entries (default 1), newest first. With
 Show undo history. The default limit is 30 entries. JSON output includes the
 full command, working directory, status, exit code, item count, and staged
 bytes.
+.TP
+.B inspect \fIID\fR [\fB\-\-json\fR]
+Inspect one journal entry, its staged items, and recovery readiness without
+restoring anything. With \fB\-\-json\fR, emit machine\-readable JSON.
 .TP
 .B status \fR[\fB\-\-json\fR]
 Show data locations, undo stack depth, retention settings, enabled wrappers,
@@ -83,7 +88,7 @@ Recognized keys:
 .RS
 .nf
 wrap.rm, wrap.mv, wrap.cp, wrap.chmod, wrap.chown, wrap.git
-wrap.git_reset, wrap.git_clean, wrap.git_checkout, wrap.git_restore
+wrap.git_reset, wrap.git_clean, wrap.git_checkout, wrap.git_restore, wrap.git_branch_delete
 trash.retention_days (0 disables automatic expiry)
 trash.max_bytes (0 means unlimited)
 journal.keep_days (0 keeps history forever)
@@ -135,8 +140,8 @@ When staging is impossible, the command runs natively and is recorded as
 non\-undoable rather than being blocked.
 .SH LIMITATIONS
 Non\-UTF\-8 arguments, unmodeled flags such as \fBrm \-\-one\-file\-system\fR,
-branch switching, interactive git modes, empty directories removed by
-\fBgit clean\fR, and submodule internals are passed through without undo.
+branch switching, interactive git modes, and submodule internals are passed
+through without undo.
 Deleted files occupy trash until
 .B rewind clean
 runs.
