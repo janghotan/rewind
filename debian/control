@@ -22,7 +22,7 @@ Depends:
 Description: universal undo for destructive shell commands
  rewind sits between your shell and commands that destroy state. It stages
  the pre-action state of rm, mv, cp, chmod, chown, git reset --hard,
- git clean, git checkout, and git restore, runs the real command with
+ git clean, git checkout, git restore, and git branch -D, runs the real command with
  unchanged output and exit code, and keeps a local journal so the action
  can be reversed later.
  .
