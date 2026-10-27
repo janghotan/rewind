@@ -51,11 +51,14 @@ src/
 最快的安装方式是 Linux 静态二进制：
 
 ```bash
-curl -fsSL https://github.com/janghotan/rewind/releases/latest/download/rewind-x86_64-unknown-linux-musl.tar.gz \
-  | tar -xz -C ~/.local/bin
+set -o pipefail
+install -d -m 0755 "$HOME/.local/bin" &&
+curl -fsSL https://github.com/janghotan/rewind/releases/latest/download/rewind-x86_64-unknown-linux-musl.tar.gz |
+  tar -xz --strip-components=1 --wildcards -C "$HOME/.local/bin" 'rewind-*/rewind' &&
+"$HOME/.local/bin/rewind" --version
 ```
 
-在 ARM64 上把 `x86_64` 换成 `aarch64`。发布二进制静态链接 musl，没有运行时依赖。
+在 ARM64 上把 URL 中的 `x86_64` 换成 `aarch64`。发布二进制静态链接 musl，没有运行时依赖。请确保 `~/.local/bin` 已添加到 `PATH` 环境变量中（例如 `export PATH="$HOME/.local/bin:$PATH"`）。
 
 <details>
 <summary><strong>包管理器与源码构建</strong></summary>
