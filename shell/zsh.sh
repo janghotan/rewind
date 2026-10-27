@@ -28,7 +28,7 @@ if (( $+commands[rewind] )); then
 
     git() {
         case "$1" in
-            reset|clean|checkout|restore) __rewind_run git "$@" ;;
+            reset|clean|checkout|restore|branch) __rewind_run git "$@" ;;
             *) command git "$@" ;;
         esac
     }

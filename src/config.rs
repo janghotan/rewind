@@ -38,6 +38,8 @@ pub struct WrapConfig {
     pub git_clean: bool,
     pub git_checkout: bool,
     pub git_restore: bool,
+    /// Intercept `git branch -d` / `-D`.
+    pub git_branch_delete: bool,
 }
 
 impl Default for WrapConfig {
@@ -53,6 +55,7 @@ impl Default for WrapConfig {
             git_clean: true,
             git_checkout: true,
             git_restore: true,
+            git_branch_delete: true,
         }
     }
 }
@@ -161,6 +164,7 @@ impl Config {
             "clean" => self.wrap.git_clean,
             "checkout" => self.wrap.git_checkout,
             "restore" => self.wrap.git_restore,
+            "branch" => self.wrap.git_branch_delete,
             _ => false,
         }
     }
@@ -189,6 +193,7 @@ impl Config {
             "wrap.git_clean" => bool_at(&mut self.wrap.git_clean)?,
             "wrap.git_checkout" => bool_at(&mut self.wrap.git_checkout)?,
             "wrap.git_restore" => bool_at(&mut self.wrap.git_restore)?,
+            "wrap.git_branch_delete" => bool_at(&mut self.wrap.git_branch_delete)?,
             "trash.retention_days" => u64_at(&mut self.trash.retention_days)?,
             "trash.max_bytes" => u64_at(&mut self.trash.max_bytes)?,
             "journal.keep_days" => u64_at(&mut self.journal.keep_days)?,
@@ -216,6 +221,7 @@ impl Config {
             "wrap.git_clean",
             "wrap.git_checkout",
             "wrap.git_restore",
+            "wrap.git_branch_delete",
             "trash.retention_days",
             "trash.max_bytes",
             "journal.keep_days",

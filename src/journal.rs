@@ -105,6 +105,8 @@ pub enum StagedKind {
     Metadata,
     /// Path did not exist before the command; undo should remove it.
     Created,
+    /// An empty directory removed by `git clean`; undo recreates it.
+    Directory,
 }
 
 impl StagedKind {
@@ -114,6 +116,7 @@ impl StagedKind {
             Self::Copy => "copy",
             Self::Metadata => "metadata",
             Self::Created => "created",
+            Self::Directory => "directory",
         }
     }
 
@@ -122,6 +125,7 @@ impl StagedKind {
             "move" => Self::Move,
             "copy" => Self::Copy,
             "metadata" => Self::Metadata,
+            "directory" => Self::Directory,
             _ => Self::Created,
         }
     }
@@ -246,6 +250,27 @@ impl Journal {
             .map_err(|err| Error::Journal(format!("open memory: {err}")))?;
         conn.execute_batch(SCHEMA)
             .map_err(|err| Error::Journal(format!("initializing schema: {err}")))?;
+        Ok(Self { conn })
+    }
+
+    /// Open an existing journal without the ability to change entries.
+    ///
+    /// Unlike [`Journal::open`], this never creates the database or its
+    /// schema. `PRAGMA query_only` makes SQLite reject accidental writes, so
+    /// read-only commands such as `rewind inspect` cannot mutate the journal.
+    pub fn open_query_only(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Err(Error::Journal(format!(
+                "no journal yet at {}",
+                path.display()
+            )));
+        }
+        let conn = Connection::open(path)
+            .map_err(|err| Error::Journal(format!("opening {}: {err}", path.display())))?;
+        conn.execute_batch("PRAGMA query_only = ON; PRAGMA busy_timeout = 5000;")
+            .map_err(|err| {
+                Error::Journal(format!("opening {} read-only: {err}", path.display()))
+            })?;
         Ok(Self { conn })
     }
 

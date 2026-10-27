@@ -30,7 +30,7 @@ if command -v rewind >/dev/null 2>&1; then
     # git invocation goes straight to the real binary.
     git() {
         case "$1" in
-            reset|clean|checkout|restore) __rewind_run git "$@" ;;
+            reset|clean|checkout|restore|branch) __rewind_run git "$@" ;;
             *) command git "$@" ;;
         esac
     }

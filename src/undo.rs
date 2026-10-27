@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::engine::{git, metadata};
-use crate::journal::{Entry, Journal, StagedKind};
+use crate::journal::{Entry, Journal, StagedItem, StagedKind};
 use crate::paths::Paths;
 use crate::staging::{Stager, move_path, remove_tree};
 
@@ -90,6 +90,15 @@ pub fn run(
 fn undo_entry(journal: &mut Journal, paths: &Paths, entry: &Entry) -> crate::error::Result<bool> {
     let stager = Stager::new(paths, entry.id);
 
+    if entry.command == "git_branch_delete" {
+        let complete = git::undo_branch_delete(entry)?;
+        if complete {
+            journal.mark_undone(entry.id)?;
+            let _ = stager.cleanup_entry_dir();
+        }
+        return Ok(complete);
+    }
+
     if entry.command == "git_reset" {
         git::undo_reset(entry)?;
         journal.mark_undone(entry.id)?;
@@ -109,7 +118,24 @@ fn undo_entry(journal: &mut Journal, paths: &Paths, entry: &Entry) -> crate::err
     let staged = journal.staged_for(entry.id)?;
     let mut success = true;
 
+    // Directory entries only describe empty directory structure. Recreate them
+    // before files so that file restores land in their original parents.
+    if entry.command == "git_clean" {
+        restore_clean_directories(journal, &staged, &mut success)?;
+    }
+
     for item in staged.iter().rev() {
+        if item.kind == StagedKind::Directory {
+            if entry.command == "git_clean" {
+                continue;
+            }
+            eprintln!(
+                "rewind: do not know how to restore directory {} for {} (#{})",
+                item.origin, entry.command, entry.id
+            );
+            success = false;
+            continue;
+        }
         let origin = PathBuf::from(&item.origin);
         let stored = PathBuf::from(&item.stored);
         let result = match (entry.command.as_str(), item.kind) {
@@ -166,6 +192,76 @@ fn undo_entry(journal: &mut Journal, paths: &Paths, entry: &Entry) -> crate::err
     } else {
         Ok(false)
     }
+}
+
+/// Recreate the empty directories recorded for a `git clean` entry.
+///
+/// Directories that still exist are left untouched: they either survived the
+/// clean (for example because an excluded file was inside) or the user
+/// recreated them afterwards. Only missing directories are created.
+fn restore_clean_directories(
+    journal: &mut Journal,
+    staged: &[StagedItem],
+    success: &mut bool,
+) -> crate::error::Result<()> {
+    let mut dirs: Vec<&StagedItem> = staged
+        .iter()
+        .filter(|item| item.kind == StagedKind::Directory)
+        .collect();
+    dirs.sort_by_key(|item| Path::new(&item.origin).components().count());
+
+    let mut created: Vec<(PathBuf, Option<u32>)> = Vec::new();
+    for item in dirs {
+        let origin = PathBuf::from(&item.origin);
+        match origin.symlink_metadata() {
+            Ok(meta) if meta.file_type().is_dir() => {
+                journal.remove_staged(item.id)?;
+            }
+            Ok(_) => {
+                eprintln!(
+                    "rewind: cannot restore directory {}: a non-directory entry is in the way",
+                    origin.display()
+                );
+                *success = false;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                match fs::create_dir_all(&origin) {
+                    Ok(()) => {
+                        let mode = item
+                            .meta
+                            .get("mode")
+                            .and_then(Value::as_u64)
+                            .map(|mode| mode as u32);
+                        created.push((origin, mode));
+                        journal.remove_staged(item.id)?;
+                    }
+                    Err(err) => {
+                        eprintln!("rewind: creating {}: {err}", origin.display());
+                        *success = false;
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("rewind: inspecting {}: {err}", origin.display());
+                *success = false;
+            }
+        }
+    }
+
+    // Apply modes once every directory exists; traverse bottom-up so restrictive
+    // parent permissions do not prevent setting permissions on children.
+    for (path, mode) in created.into_iter().rev() {
+        if let Some(mode) = mode {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&path, fs::Permissions::from_mode(mode));
+            }
+            #[cfg(not(unix))]
+            let _ = (path, mode);
+        }
+    }
+    Ok(())
 }
 
 fn remove_created(origin: &Path) -> crate::error::Result<()> {

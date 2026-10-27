@@ -176,3 +176,133 @@ fn config_init_creates_a_file_once() {
     assert_eq!(first, second);
     assert!(sandbox.run_ok(&["status"]).status.success());
 }
+
+#[test]
+fn inspect_requires_an_existing_journal_and_entry() {
+    let sandbox = Sandbox::new();
+    let no_journal = sandbox.run_fail(&["inspect", "1"]);
+    assert!(stderr_of(&no_journal).contains("no journal yet"));
+
+    sandbox.write("f", "x");
+    sandbox.exec_ok("rm", &["f"]);
+
+    let missing = sandbox.run_fail(&["inspect", "99"]);
+    assert!(stderr_of(&missing).contains("no journal entry #99"));
+
+    let invalid = sandbox.run_fail(&["inspect", "not-a-number"]);
+    assert_eq!(invalid.status.code(), Some(2));
+}
+
+#[test]
+fn inspect_reports_entry_state_without_mutating_it() {
+    let sandbox = Sandbox::new();
+    sandbox.write("notes.txt", "hello");
+
+    sandbox.exec_ok("rm", &["notes.txt"]);
+    let output = sandbox.run_ok(&["inspect", "1"]);
+    let text = stdout_of(&output);
+    assert!(text.contains("Entry #1"));
+    assert!(text.contains("Command:      rm notes.txt"));
+    assert!(text.contains("Type:      file"));
+    assert!(text.contains("Recovery:"));
+    assert!(text.contains("State:        ready"));
+    assert!(text.contains("cannot guarantee recovery"));
+    assert!(!sandbox.exists("notes.txt"), "inspect restored a file");
+    assert!(sandbox.log().contains("undoable"));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&sandbox.run_ok(&["inspect", "1", "--json"]).stdout).unwrap();
+    assert_eq!(json["id"], 1);
+    assert_eq!(json["command"], "rm notes.txt");
+    assert_eq!(json["command_name"], "rm");
+    assert_eq!(json["status"], "done");
+    assert_eq!(json["undoable"], true);
+    assert_eq!(json["items"], 1);
+    assert_eq!(json["recovery"]["state"], "ready");
+    assert_eq!(json["recovery"]["conflicts"], serde_json::json!([]));
+    assert_eq!(json["recovery"]["missing"], serde_json::json!([]));
+    assert_eq!(
+        json["staged_items"][0]["origin"],
+        sandbox.path("notes.txt").display().to_string()
+    );
+    assert_eq!(json["staged_items"][0]["kind"], "move");
+    assert_eq!(json["staged_items"][0]["object_type"], "file");
+    assert_eq!(json["staged_items"][0]["data_available"], true);
+    assert!(!sandbox.exists("notes.txt"));
+
+    // A later undo still works, proving inspection did not consume the entry.
+    sandbox.run_ok(&["undo"]);
+    assert_eq!(sandbox.read("notes.txt"), "hello");
+}
+
+#[test]
+fn inspect_reports_conflicts_and_expired_entries() {
+    let sandbox = Sandbox::new();
+    sandbox.write("f", "old");
+    sandbox.exec_ok("rm", &["f"]);
+    sandbox.write("f", "new");
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&sandbox.run_ok(&["inspect", "1", "--json"]).stdout).unwrap();
+    assert_eq!(json["recovery"]["state"], "conflict");
+    assert!(!json["recovery"]["conflicts"].as_array().unwrap().is_empty());
+
+    sandbox.run_ok(&["clean", "--all"]);
+    let json: serde_json::Value =
+        serde_json::from_slice(&sandbox.run_ok(&["inspect", "1", "--json"]).stdout).unwrap();
+    assert_eq!(json["recovery"]["state"], "expired");
+    assert_eq!(json["status"], "expired");
+    assert_eq!(json["items"], 0);
+}
+
+#[test]
+fn inspect_summarizes_git_reset_snapshots() {
+    if !have_command("git") {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.exec_ok("git", &["reset", "--hard", "HEAD"]);
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&sandbox.run_ok(&["inspect", "1", "--json"]).stdout).unwrap();
+    assert_eq!(json["command_name"], "git_reset");
+    assert_eq!(json["recovery"]["state"], "ready");
+    assert_eq!(json["items"], 0);
+    assert!(json["staged_items"].as_array().unwrap().is_empty());
+    sandbox.run_ok(&["undo"]);
+}
+
+#[test]
+fn inspect_summarizes_git_branch_delete_and_detects_conflicts() {
+    if !have_command("git") {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.git_ok(&["branch", "feature/login"]);
+    sandbox.exec_ok("git", &["branch", "-D", "feature/login"]);
+
+    let text = stdout_of(&sandbox.run_ok(&["inspect", "1"]));
+    assert!(text.contains("git_branch_delete branch -D feature/login"));
+    assert!(text.contains("Recovery:"));
+    assert!(text.contains("State:        ready"));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&sandbox.run_ok(&["inspect", "1", "--json"]).stdout).unwrap();
+    assert_eq!(json["command_name"], "git_branch_delete");
+    assert_eq!(json["recovery"]["state"], "ready");
+    assert_eq!(json["recovery"]["conflicts"], serde_json::json!([]));
+    assert_eq!(json["items"], 0);
+
+    // Recreate branch at different commit to trigger conflict detection in inspect.
+    sandbox.write("commit2.txt", "content\n");
+    sandbox.git_ok(&["add", "commit2.txt"]);
+    sandbox.git_ok(&["commit", "-m", "commit 2"]);
+    sandbox.git_ok(&["branch", "feature/login"]);
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&sandbox.run_ok(&["inspect", "1", "--json"]).stdout).unwrap();
+    assert_eq!(json["recovery"]["state"], "conflict");
+    assert!(!json["recovery"]["conflicts"].as_array().unwrap().is_empty());
+}
