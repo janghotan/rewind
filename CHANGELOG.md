@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-27
+
 ### Added
 
 - **`rewind inspect <ID>` command**: preview journal entry metadata, staged item paths, types, modes, timestamps, directory summaries, and recovery status before attempting an undo. Supports machine-readable `--json` output with conflict and missing data diagnostics.
@@ -94,6 +96,7 @@ First public release.
 - **Packaging**: RPM spec for Fedora/COPR and Debian packaging for
   Debian/Ubuntu, including shell completion and hook installation.
 
-[Unreleased]: https://github.com/janghotan/rewind/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/janghotan/rewind/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/janghotan/rewind/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/janghotan/rewind/releases/tag/v0.1.1
 [0.1.0]: https://github.com/janghotan/rewind/releases/tag/v0.1.0
