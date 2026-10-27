@@ -701,28 +701,38 @@ fn branch(journal: &mut Journal, _paths: &Paths, config: &Config, argv: &[String
     }
 
     let entry_id = journal.begin_entry("git_branch_delete", argv, &repo.cwd)?;
-    let mut pinned = Vec::with_capacity(snapshots.len());
-    let mut failures = 0usize;
-    let mut branches = Vec::new();
+    let mut pinned_refs = Vec::with_capacity(snapshots.len());
+    let mut branches = Vec::with_capacity(snapshots.len());
+    let mut pin_failed = false;
 
     for (index, snapshot) in snapshots.iter().enumerate() {
         let reference = ref_name(entry_id, &format!("branch-{index}"));
         match update_ref(&repo.root, &reference, &snapshot.commit) {
-            Ok(()) => pinned.push(true),
+            Ok(()) => {
+                pinned_refs.push(reference.clone());
+                branches.push(json!({
+                    "name": snapshot.name,
+                    "commit": snapshot.commit,
+                    "ref": reference,
+                }));
+            }
             Err(err) => {
-                pinned.push(false);
-                failures += 1;
                 warn(&format!(
                     "could not pin branch {} before deletion: {err}",
                     snapshot.name
                 ));
+                pin_failed = true;
+                break;
             }
         }
-        branches.push(json!({
-            "name": snapshot.name,
-            "commit": snapshot.commit,
-            "ref": reference,
-        }));
+    }
+
+    if pin_failed {
+        for reference in &pinned_refs {
+            let _ = delete_ref(&repo.root, reference);
+        }
+        journal.delete_entry(entry_id)?;
+        return run_passthrough("git", argv);
     }
 
     let exit_code = run_passthrough("git", argv)?;
@@ -732,39 +742,33 @@ fn branch(journal: &mut Journal, _paths: &Paths, config: &Config, argv: &[String
     let mut surviving = Vec::new();
     let mut restorable = Vec::new();
     for (index, snapshot) in snapshots.iter().enumerate() {
-        let reference = ref_name(entry_id, &format!("branch-{index}"));
+        let reference = &pinned_refs[index];
         if rev_parse_branch(&repo.root, &snapshot.name).is_some() {
-            let _ = delete_ref(&repo.root, &reference);
+            let _ = delete_ref(&repo.root, reference);
             surviving.push(snapshot.name.clone());
-        } else if pinned[index] {
+        } else {
             restorable.push(branches[index].clone());
         }
     }
 
-    if restorable.is_empty() && surviving.is_empty() {
-        // Nothing was deleted and nothing failed to pin: no entry is useful.
-        journal.delete_entry(entry_id)?;
-        return Ok(exit_code);
-    }
-    if restorable.is_empty() && failures == 0 {
+    if restorable.is_empty() {
+        // Nothing was deleted: no entry is useful.
         journal.delete_entry(entry_id)?;
         return Ok(exit_code);
     }
 
-    let undoable = !restorable.is_empty();
     let meta = json!({
         "repo": repo.root.display().to_string(),
         "role": "branch_delete",
         "branches": restorable,
         "survived": surviving,
         "keep_refs": config.git.keep_refs,
-        "failures": failures,
     });
     journal.finish_entry(
         entry_id,
         EntryStatus::Done,
         Some(exit_code),
-        undoable,
+        true,
         Some(&meta),
     )?;
     Ok(exit_code)

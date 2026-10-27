@@ -180,8 +180,13 @@ fn config_init_creates_a_file_once() {
 #[test]
 fn inspect_requires_an_existing_journal_and_entry() {
     let sandbox = Sandbox::new();
+    let db_path = sandbox.home.join(".local/share/rewind/journal.db");
     let no_journal = sandbox.run_fail(&["inspect", "1"]);
     assert!(stderr_of(&no_journal).contains("no journal yet"));
+    assert!(
+        !db_path.exists(),
+        "inspect must not create a journal database"
+    );
 
     sandbox.write("f", "x");
     sandbox.exec_ok("rm", &["f"]);
@@ -199,6 +204,8 @@ fn inspect_reports_entry_state_without_mutating_it() {
     sandbox.write("notes.txt", "hello");
 
     sandbox.exec_ok("rm", &["notes.txt"]);
+    let log_before = sandbox.log();
+
     let output = sandbox.run_ok(&["inspect", "1"]);
     let text = stdout_of(&output);
     assert!(text.contains("Entry #1"));
@@ -207,7 +214,10 @@ fn inspect_reports_entry_state_without_mutating_it() {
     assert!(text.contains("Recovery:"));
     assert!(text.contains("State:        ready"));
     assert!(text.contains("cannot guarantee recovery"));
-    assert!(!sandbox.exists("notes.txt"), "inspect restored a file");
+    assert!(
+        !sandbox.exists("notes.txt"),
+        "inspect must not mutate the filesystem"
+    );
     assert!(sandbox.log().contains("undoable"));
 
     let json: serde_json::Value =
@@ -229,6 +239,12 @@ fn inspect_reports_entry_state_without_mutating_it() {
     assert_eq!(json["staged_items"][0]["object_type"], "file");
     assert_eq!(json["staged_items"][0]["data_available"], true);
     assert!(!sandbox.exists("notes.txt"));
+
+    let log_after = sandbox.log();
+    assert_eq!(
+        log_before, log_after,
+        "inspect must not modify journal records"
+    );
 
     // A later undo still works, proving inspection did not consume the entry.
     sandbox.run_ok(&["undo"]);

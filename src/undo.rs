@@ -121,7 +121,7 @@ fn undo_entry(journal: &mut Journal, paths: &Paths, entry: &Entry) -> crate::err
     // Directory entries only describe empty directory structure. Recreate them
     // before files so that file restores land in their original parents.
     if entry.command == "git_clean" {
-        restore_clean_directories(journal, &staged, &mut success)?;
+        restore_clean_directories(journal, entry, &staged, &mut success)?;
     }
 
     for item in staged.iter().rev() {
@@ -194,6 +194,28 @@ fn undo_entry(journal: &mut Journal, paths: &Paths, entry: &Entry) -> crate::err
     }
 }
 
+/// Check if any existing component of `origin` starting from `base` is a symlink.
+/// Returns `Ok(Some(symlink_path))` if a symlink component was found.
+fn check_parent_symlinks(origin: &Path, base: &Path) -> std::io::Result<Option<PathBuf>> {
+    let relative = origin.strip_prefix(base).unwrap_or(origin);
+    let mut current = base.to_path_buf();
+    for comp in relative.components() {
+        current.push(comp);
+        match current.symlink_metadata() {
+            Ok(meta) => {
+                if meta.file_type().is_symlink() {
+                    return Ok(Some(current));
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                break;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(None)
+}
+
 /// Recreate the empty directories recorded for a `git clean` entry.
 ///
 /// Directories that still exist are left untouched: they either survived the
@@ -201,21 +223,76 @@ fn undo_entry(journal: &mut Journal, paths: &Paths, entry: &Entry) -> crate::err
 /// recreated them afterwards. Only missing directories are created.
 fn restore_clean_directories(
     journal: &mut Journal,
+    entry: &Entry,
     staged: &[StagedItem],
     success: &mut bool,
 ) -> crate::error::Result<()> {
+    let repo_root = entry
+        .meta
+        .get("repo")
+        .and_then(Value::as_str)
+        .map(Path::new)
+        .unwrap_or_else(|| Path::new(&entry.cwd));
+
     let mut dirs: Vec<&StagedItem> = staged
         .iter()
         .filter(|item| item.kind == StagedKind::Directory)
         .collect();
     dirs.sort_by_key(|item| Path::new(&item.origin).components().count());
 
-    let mut created: Vec<(PathBuf, Option<u32>)> = Vec::new();
+    let mut created: Vec<(i64, PathBuf, Option<u32>)> = Vec::new();
     for item in dirs {
         let origin = PathBuf::from(&item.origin);
+        match check_parent_symlinks(&origin, repo_root) {
+            Ok(Some(symlink)) => {
+                eprintln!(
+                    "rewind: cannot restore directory {}: {} is a symlink",
+                    origin.display(),
+                    symlink.display()
+                );
+                *success = false;
+                continue;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                eprintln!("rewind: inspecting {}: {err}", origin.display());
+                *success = false;
+                continue;
+            }
+        }
+
         match origin.symlink_metadata() {
             Ok(meta) if meta.file_type().is_dir() => {
-                journal.remove_staged(item.id)?;
+                let mut mode_ok = true;
+                if let Some(mode) = item
+                    .meta
+                    .get("mode")
+                    .and_then(Value::as_u64)
+                    .map(|mode| mode as u32)
+                {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let current_mode = meta.permissions().mode() & 0o7777;
+                        if current_mode != mode {
+                            if let Err(err) =
+                                fs::set_permissions(&origin, fs::Permissions::from_mode(mode))
+                            {
+                                eprintln!(
+                                    "rewind: setting permissions on {}: {err}",
+                                    origin.display()
+                                );
+                                *success = false;
+                                mode_ok = false;
+                            }
+                        }
+                    }
+                    #[cfg(not(unix))]
+                    let _ = mode;
+                }
+                if mode_ok {
+                    journal.remove_staged(item.id)?;
+                }
             }
             Ok(_) => {
                 eprintln!(
@@ -232,8 +309,7 @@ fn restore_clean_directories(
                             .get("mode")
                             .and_then(Value::as_u64)
                             .map(|mode| mode as u32);
-                        created.push((origin, mode));
-                        journal.remove_staged(item.id)?;
+                        created.push((item.id, origin, mode));
                     }
                     Err(err) => {
                         eprintln!("rewind: creating {}: {err}", origin.display());
@@ -250,15 +326,23 @@ fn restore_clean_directories(
 
     // Apply modes once every directory exists; traverse bottom-up so restrictive
     // parent permissions do not prevent setting permissions on children.
-    for (path, mode) in created.into_iter().rev() {
+    for (item_id, path, mode) in created.into_iter().rev() {
+        let mut mode_ok = true;
         if let Some(mode) = mode {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&path, fs::Permissions::from_mode(mode));
+                if let Err(err) = fs::set_permissions(&path, fs::Permissions::from_mode(mode)) {
+                    eprintln!("rewind: setting permissions on {}: {err}", path.display());
+                    *success = false;
+                    mode_ok = false;
+                }
             }
             #[cfg(not(unix))]
             let _ = (path, mode);
+        }
+        if mode_ok {
+            journal.remove_staged(item_id)?;
         }
     }
     Ok(())

@@ -679,3 +679,152 @@ fn branch_delete_in_detached_head_works() {
         commit
     );
 }
+
+#[test]
+fn branch_delete_pin_failure_falls_back_to_passthrough_without_journal() {
+    if !git_available() {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.git_ok(&["branch", "feat-pin-fail"]);
+
+    // Block refs/rewind directory creation with a regular file
+    sandbox.write(".git/refs/rewind", "blocking-file");
+
+    let output = sandbox.exec_ok("git", &["branch", "-D", "feat-pin-fail"]);
+    assert!(output.status.success());
+    // Branch was deleted by native command
+    assert!(!sandbox.git_ok(&["branch"]).contains("feat-pin-fail"));
+    // No journal entry was created
+    assert!(sandbox.log().contains("no history"));
+
+    let undo = sandbox.run(&["undo"]);
+    assert!(stdout_of(&undo).contains("nothing to undo"));
+}
+
+#[test]
+fn branch_delete_partial_pin_failure_cleans_up_and_does_not_journal() {
+    if !git_available() {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.git_ok(&["branch", "feat-1"]);
+    sandbox.git_ok(&["branch", "feat-2"]);
+
+    // Pre-create the lock file for branch-1 so that branch-0 succeeds but branch-1 fails
+    sandbox.mkdir(".git/refs/rewind");
+    sandbox.write(".git/refs/rewind/1-branch-1.lock", "locked");
+
+    let output = sandbox.exec_ok("git", &["branch", "-D", "feat-1", "feat-2"]);
+    assert!(output.status.success());
+    // Native command deleted both branches
+    let branches = sandbox.git_ok(&["branch"]);
+    assert!(!branches.contains("feat-1") && !branches.contains("feat-2"));
+
+    // Pinned ref for branch-0 must have been cleaned up
+    assert!(!sandbox.exists(".git/refs/rewind/1-branch-0"));
+
+    // No journal entry was left behind
+    assert!(sandbox.log().contains("no history"));
+}
+
+#[test]
+fn git_clean_undo_refuses_to_traverse_recreated_parent_symlink() {
+    if !git_available() {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.mkdir("parent/nested/dir");
+
+    sandbox.exec_ok("git", &["clean", "-fd"]);
+    assert!(!sandbox.exists("parent"));
+
+    // Outside the repo, create an external directory
+    let ext_dir = tempfile::tempdir().unwrap();
+    let ext_path = ext_dir.path().join("external_target");
+    std::fs::create_dir_all(&ext_path).unwrap();
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&ext_path, sandbox.path("parent")).unwrap();
+
+    #[cfg(unix)]
+    {
+        let failed = sandbox.run(&["undo"]);
+        assert!(!failed.status.success());
+
+        // The external target must NOT have had nested/dir created inside it!
+        assert!(!ext_path.join("nested").exists());
+
+        // The staged item remains in the journal (resumable)
+        assert!(sandbox.log().contains("undoable"));
+
+        // Remove the conflicting symlink
+        std::fs::remove_file(sandbox.path("parent")).unwrap();
+
+        // Retry undo; now it should safely recreate parent/nested/dir
+        sandbox.run_ok(&["undo"]);
+        assert!(sandbox.path("parent/nested/dir").is_dir());
+    }
+}
+
+#[test]
+fn git_clean_undo_preserves_directory_modes() {
+    if !git_available() {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.mkdir("restricted/leaf");
+    #[cfg(unix)]
+    sandbox.set_mode("restricted/leaf", 0o700);
+
+    sandbox.exec_ok("git", &["clean", "-fd"]);
+    assert!(!sandbox.exists("restricted"));
+
+    sandbox.run_ok(&["undo"]);
+    assert!(sandbox.path("restricted/leaf").is_dir());
+    #[cfg(unix)]
+    assert_eq!(sandbox.mode("restricted/leaf"), 0o700);
+}
+
+#[test]
+fn git_clean_undo_handles_permission_restoration_failure_and_remains_resumable() {
+    if !git_available() {
+        return;
+    }
+    let sandbox = Sandbox::new();
+    sandbox.init_repo();
+    sandbox.mkdir("parent/untracked_leaf");
+    sandbox.write("parent/tracked.txt", "keep\n");
+    sandbox.git_ok(&["add", "parent/tracked.txt"]);
+    sandbox.git_ok(&["commit", "-m", "track file in parent"]);
+
+    #[cfg(unix)]
+    sandbox.set_mode("parent/untracked_leaf", 0o700);
+
+    sandbox.exec_ok("git", &["clean", "-fd"]);
+    assert!(!sandbox.path("parent/untracked_leaf").exists());
+    assert!(sandbox.path("parent/tracked.txt").exists());
+
+    #[cfg(unix)]
+    {
+        // Make the tracked parent read-only (0o555) so creating untracked_leaf fails
+        sandbox.set_mode("parent", 0o555);
+
+        let failed = sandbox.run(&["undo"]);
+        assert!(!failed.status.success());
+        // The staged directory item remains in the journal (resumable)
+        assert!(sandbox.log().contains("undoable"));
+
+        // Restore parent write permission and retry undo
+        sandbox.set_mode("parent", 0o755);
+        sandbox.run_ok(&["undo"]);
+
+        // Directory exists and mode is restored to 0o700
+        assert!(sandbox.path("parent/untracked_leaf").is_dir());
+        assert_eq!(sandbox.mode("parent/untracked_leaf"), 0o700);
+    }
+}

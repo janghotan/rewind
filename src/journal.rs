@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 use serde_json::Value;
 
 use crate::error::{Error, Result};
@@ -265,7 +265,7 @@ impl Journal {
                 path.display()
             )));
         }
-        let conn = Connection::open(path)
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|err| Error::Journal(format!("opening {}: {err}", path.display())))?;
         conn.execute_batch("PRAGMA query_only = ON; PRAGMA busy_timeout = 5000;")
             .map_err(|err| {
@@ -822,5 +822,27 @@ mod tests {
             j.entry(id).unwrap().unwrap().status,
             EntryStatus::Interrupted
         );
+    }
+
+    #[test]
+    fn open_query_only_enforces_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("journal.db");
+        assert!(Journal::open_query_only(&db_path).is_err());
+        assert!(!db_path.exists());
+
+        {
+            let mut j = Journal::open(&db_path).unwrap();
+            j.begin_entry("rm", &args(&["test"]), Path::new("/"))
+                .unwrap();
+        }
+
+        let qj = Journal::open_query_only(&db_path).unwrap();
+        let entries = qj.list(10, false).unwrap();
+        assert_eq!(entries.len(), 1);
+
+        // Attempting an insert or write must fail under SQLITE_OPEN_READ_ONLY / PRAGMA query_only
+        let write_res = qj.conn.execute("DELETE FROM entries", []);
+        assert!(write_res.is_err());
     }
 }
